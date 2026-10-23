@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173,http://localhost:8501"
     data_dir: str = "./data"
     max_upload_mb: int = Field(default=5, ge=1, le=50)
+    workspace_root: str = "./samples/workspace"
+    max_read_bytes: int = Field(default=200_000, ge=1_000, le=5_000_000)
+    tool_timeout_seconds: float = Field(default=10.0, gt=0, le=120)
     llm_provider: Literal["demo", "groq"] = "demo"
     groq_api_key: SecretStr = SecretStr("")
     groq_model: str = ""

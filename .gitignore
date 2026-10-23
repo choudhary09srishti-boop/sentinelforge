@@ -14,5 +14,3 @@ models/
 node_modules/
 dist/
 build/
-*.zip
-*.zip

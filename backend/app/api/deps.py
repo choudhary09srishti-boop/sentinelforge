@@ -1,4 +1,4 @@
-"""Shared FastAPI dependencies: settings access and API-key auth."""
+"""Shared FastAPI dependencies: settings, MCP gateway and API-key auth."""
 
 import secrets
 from typing import Annotated
@@ -6,6 +6,7 @@ from typing import Annotated
 from fastapi import Depends, Header, HTTPException, Request
 
 from app.core.config import Settings
+from app.mcp_client import McpGateway
 
 
 def get_app_settings(request: Request) -> Settings:
@@ -13,7 +14,13 @@ def get_app_settings(request: Request) -> Settings:
     return settings
 
 
+def get_gateway(request: Request) -> McpGateway:
+    gateway: McpGateway = request.app.state.gateway
+    return gateway
+
+
 SettingsDep = Annotated[Settings, Depends(get_app_settings)]
+GatewayDep = Annotated[McpGateway, Depends(get_gateway)]
 
 
 def require_api_key(
