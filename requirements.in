@@ -1,0 +1,11 @@
+# Runtime dependencies (top-level only). Pinned versions are generated into requirements.txt.
+mcp
+fastapi
+uvicorn
+pydantic-settings
+httpx
+python-multipart
+pypdf
+numpy
+fastembed
+langgraph

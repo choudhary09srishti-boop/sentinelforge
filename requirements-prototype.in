@@ -1,0 +1,3 @@
+# Temporary prototype UI only. Removed from the final deployment.
+-c requirements.txt
+streamlit
