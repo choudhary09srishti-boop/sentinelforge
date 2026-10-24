@@ -1,0 +1,10 @@
+{
+  "llm_provider": "demo",
+  "max_upload_mb": 5,
+  "tool_timeout_seconds": 10,
+  "rag_tool_timeout_seconds": 120,
+  "chunk_max_chars": 1000,
+  "allowed_origins": [
+    "http://localhost:5173"
+  ]
+}

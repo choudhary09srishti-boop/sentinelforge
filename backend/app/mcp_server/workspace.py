@@ -7,6 +7,7 @@ import os
 import re
 from pathlib import Path
 
+from app.core.domain import DomainError
 from app.mcp_server.models import (
     FileContent,
     FileEntry,
@@ -40,13 +41,8 @@ MAX_QUERY_LENGTH = 200
 _WINDOWS_DRIVE = re.compile(r"^[A-Za-z]:")
 
 
-class WorkspaceError(Exception):
-    """An anticipated failure with a stable machine-readable code."""
-
-    def __init__(self, code: str, message: str) -> None:
-        super().__init__(message)
-        self.code = code
-        self.message = message
+class WorkspaceError(DomainError):
+    """An anticipated workspace failure with a stable machine-readable code."""
 
 
 def is_sensitive(name: str) -> bool:
@@ -217,6 +213,23 @@ class Workspace:
             largest_files=sizes[:5],
             truncated=truncated,
         )
+
+    def list_supported(
+        self, path: str, extensions: frozenset[str], limit: int
+    ) -> tuple[list[str], bool]:
+        """Relative paths of indexable files under a directory, bounded by `limit`."""
+        base = self.resolve(path)
+        if not base.is_dir():
+            raise WorkspaceError("not_a_directory", "Path is not a directory.")
+        files, truncated = self._collect_files()
+        found = [
+            self._rel(f) for f in files if f.is_relative_to(base) and f.suffix.lower() in extensions
+        ]
+        return found[:limit], truncated or len(found) > limit
+
+    def read_for_index(self, path: str) -> bytes:
+        """Size-checked raw bytes of a safe workspace file, for the document index."""
+        return self._read_bytes(self.resolve(path))
 
     def propose_patch(self, path: str, new_content: str) -> PatchProposal:
         """Build a unified diff. Never writes. Hashes tie approval to this exact version."""

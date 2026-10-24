@@ -1,0 +1,14 @@
+SentinelForge release notes
+
+Version 0.1.0
+  First public preview. Health endpoint, typed configuration and API key authentication.
+
+Version 0.2.0
+  Added the MCP server with repository inspection tools and structured errors.
+
+Version 0.3.0
+  Added the local document index. Support for TypeScript and JavaScript files was added in this
+  release, together with hybrid search and source citations.
+
+Version 0.4.0
+  Added prompt-injection flags on retrieved passages and incremental reindexing.

@@ -21,3 +21,7 @@ strict = true
 mypy_path = "backend"
 packages = ["app"]
 plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["fastembed", "fastembed.*"]
+ignore_missing_imports = true

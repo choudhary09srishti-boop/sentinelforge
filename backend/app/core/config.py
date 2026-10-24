@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     workspace_root: str = "./samples/workspace"
     max_read_bytes: int = Field(default=200_000, ge=1_000, le=5_000_000)
     tool_timeout_seconds: float = Field(default=10.0, gt=0, le=120)
+    rag_tool_timeout_seconds: float = Field(default=120.0, gt=0, le=600)
+    embedding_model: str = "BAAI/bge-small-en-v1.5"
+    model_cache_dir: str = "./models"
+    chunk_max_chars: int = Field(default=1000, ge=200, le=4000)
     llm_provider: Literal["demo", "groq"] = "demo"
     groq_api_key: SecretStr = SecretStr("")
     groq_model: str = ""
