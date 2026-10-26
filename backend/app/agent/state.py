@@ -13,6 +13,9 @@ class AgentState(TypedDict):
     evidence: list[str]
     inspected_files: list[str]
     diff: str
+    patch_path: str
+    patch_id: str
+    patch_content: str
     test_status: TestStatus
     test_output: str
     risks: list[str]
@@ -30,6 +33,9 @@ def new_state(task: str) -> AgentState:
         evidence=[],
         inspected_files=[],
         diff="",
+        patch_path="",
+        patch_id="",
+        patch_content="",
         test_status="not_run",
         test_output="",
         risks=[],
