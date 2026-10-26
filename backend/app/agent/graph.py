@@ -1,10 +1,11 @@
-"""Agent graph. retrieve and inspect use real tools via the MCP gateway; the rest are stubs.
+"""Agent graph. analyze, retrieve and inspect do real work; the other nodes are still stubs.
 
 Nodes return only the state fields they change. Test results are never invented:
 until the sandbox exists, test_status stays "not_run". Retrieved text is data, never
 instructions: chunks flagged for prompt injection are excluded from the evidence.
 """
 
+import json
 import re
 from typing import Any, Protocol
 
@@ -12,6 +13,7 @@ from langgraph.graph import END, START, StateGraph
 
 from app.agent.state import AgentState
 from app.mcp_client import McpToolError
+from app.providers.base import ChatMessage, LLMProvider, ProviderError
 
 DEFAULT_MAX_ATTEMPTS = 2
 EVIDENCE_TOP_K = 5
@@ -19,7 +21,15 @@ EXCERPT_CHARS = 300
 MAX_SEARCH_TERMS = 3
 MAX_INSPECTED_FILES = 5
 
+ANALYZE_SYSTEM = (
+    "You analyze a developer task for a code assistant. Reply with JSON only, in the form "
+    '{"summary": "<one sentence>", "search_terms": ["<term>", "<term>"]}. '
+    "search_terms are at most 3 likely code identifiers or distinctive words to search "
+    "for in the repository. No other text."
+)
+
 _WORD = re.compile(r"[A-Za-z_][A-Za-z0-9_]{3,}")
+_JSON_OBJECT = re.compile(r"\{.*\}", re.DOTALL)
 _STOPWORDS = frozenset(
     {
         "this", "that", "with", "from", "into", "have", "please", "should", "would",
@@ -43,6 +53,25 @@ def _terms(task: str) -> list[str]:
     return terms[:MAX_SEARCH_TERMS]
 
 
+def _parse_analysis(text: str) -> tuple[str, list[str]] | None:
+    found = _JSON_OBJECT.search(text)
+    if not found:
+        return None
+    try:
+        data = json.loads(found.group(0))
+    except ValueError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    summary, raw_terms = data.get("summary"), data.get("search_terms")
+    if not isinstance(summary, str) or not isinstance(raw_terms, list):
+        return None
+    terms = [t.strip() for t in raw_terms if isinstance(t, str) and 2 <= len(t.strip()) <= 60]
+    if not terms or not summary.strip():
+        return None
+    return summary.strip()[:300], terms[:MAX_SEARCH_TERMS]
+
+
 def _evidence_line(hit: dict[str, Any]) -> str:
     cite = hit["citation"]
     page = f" p.{cite['page']}" if cite.get("page") is not None else ""
@@ -53,8 +82,28 @@ def _evidence_line(hit: dict[str, Any]) -> str:
     return f"{where}: {' '.join(hit['text'].split())[:EXCERPT_CHARS]}"
 
 
-async def analyze(state: AgentState) -> dict[str, Any]:
-    return {"analysis": f"[stub] analysis of: {state['task']}"}
+def make_analyze(provider: LLMProvider) -> Any:
+    async def analyze(state: AgentState) -> dict[str, Any]:
+        risks = list(state["risks"])
+        parsed: tuple[str, list[str]] | None = None
+        try:
+            reply = await provider.complete(
+                [ChatMessage("system", ANALYZE_SYSTEM), ChatMessage("user", state["task"])],
+                max_tokens=300,
+                temperature=0.0,
+            )
+            parsed = _parse_analysis(reply)
+            if parsed is None and provider.external:
+                risks.append("LLM analysis was not valid JSON; used keyword fallback.")
+        except ProviderError as exc:
+            risks.append(f"LLM analysis unavailable: {exc}")
+        if parsed is None:
+            analysis = f"Task (not analysed by an LLM): {state['task'][:300]}"
+            return {"analysis": analysis, "search_terms": _terms(state["task"]), "risks": risks}
+        summary, terms = parsed
+        return {"analysis": summary, "search_terms": terms, "risks": risks}
+
+    return analyze
 
 
 async def plan(state: AgentState) -> dict[str, Any]:
@@ -86,7 +135,7 @@ def make_inspect(tools: ToolCaller) -> Any:
     async def inspect_repo(state: AgentState) -> dict[str, Any]:
         counts: dict[str, int] = {}
         risks = list(state["risks"])
-        for term in _terms(state["task"]):
+        for term in state["search_terms"] or _terms(state["task"]):
             try:
                 data = await tools.call("search_repo", {"query": term, "max_results": 10})
             except McpToolError as exc:
@@ -127,14 +176,16 @@ async def report(state: AgentState) -> dict[str, Any]:
     return {"report": "\n".join(lines)}
 
 
-def build_graph(tools: ToolCaller, max_attempts: int = DEFAULT_MAX_ATTEMPTS) -> Any:
+def build_graph(
+    tools: ToolCaller, provider: LLMProvider, max_attempts: int = DEFAULT_MAX_ATTEMPTS
+) -> Any:
     def after_review(state: AgentState) -> str:
         if state["review_ok"] or state["attempts"] >= max_attempts:
             return "report"
         return "patch"
 
     graph = StateGraph(AgentState)
-    graph.add_node("analyze", analyze)
+    graph.add_node("analyze", make_analyze(provider))
     graph.add_node("plan", plan)
     graph.add_node("retrieve", make_retrieve(tools))
     graph.add_node("inspect", make_inspect(tools))

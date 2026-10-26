@@ -8,6 +8,7 @@ TestStatus = Literal["not_run", "passed", "failed"]
 class AgentState(TypedDict):
     task: str
     analysis: str
+    search_terms: list[str]
     plan: list[str]
     evidence: list[str]
     inspected_files: list[str]
@@ -24,6 +25,7 @@ def new_state(task: str) -> AgentState:
     return AgentState(
         task=task,
         analysis="",
+        search_terms=[],
         plan=[],
         evidence=[],
         inspected_files=[],

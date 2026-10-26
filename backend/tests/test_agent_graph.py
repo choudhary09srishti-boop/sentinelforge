@@ -1,10 +1,12 @@
 import asyncio
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Any
 
 from app.agent.graph import build_graph
 from app.agent.state import AgentState, new_state
 from app.mcp_client import McpToolError
+from app.providers.base import ChatMessage, LLMProvider, ProviderError
+from app.providers.demo import DemoProvider
 
 HIT_OK = {
     "text": "Patches need approval from a human reviewer.",
@@ -16,6 +18,7 @@ HIT_BAD = {
     "citation": {"source": "evil.md", "page": 2, "start_line": 1, "end_line": 2},
     "risk_flags": ["instruction_override"],
 }
+GOOD_JSON = '{"summary": "Fix the backoff in retry", "search_terms": ["backoff", "RetryPolicy"]}'
 
 
 class FakeTools:
@@ -37,14 +40,42 @@ class FakeTools:
         return output
 
 
-def _run(tools: FakeTools, max_attempts: int = 2, task: str = "fix retry delay bug") -> AgentState:
-    final: AgentState = asyncio.run(build_graph(tools, max_attempts).ainvoke(new_state(task)))
+class FakeProvider:
+    """Stands in for an LLM provider; records every request it receives."""
+
+    def __init__(self, reply: str | Exception = "", external: bool = True) -> None:
+        self.name = "fake"
+        self.external = external
+        self.reply = reply
+        self.seen: list[list[ChatMessage]] = []
+
+    async def complete(
+        self,
+        messages: Sequence[ChatMessage],
+        *,
+        max_tokens: int = 1024,
+        temperature: float = 0.2,
+    ) -> str:
+        self.seen.append(list(messages))
+        if isinstance(self.reply, Exception):
+            raise self.reply
+        return self.reply
+
+
+def _run(
+    tools: FakeTools,
+    max_attempts: int = 2,
+    task: str = "fix retry delay bug",
+    provider: LLMProvider | None = None,
+) -> AgentState:
+    graph = build_graph(tools, provider or DemoProvider(), max_attempts)
+    final: AgentState = asyncio.run(graph.ainvoke(new_state(task)))
     return final
 
 
 def _path(max_attempts: int) -> list[str]:
     async def go() -> list[str]:
-        graph = build_graph(FakeTools(), max_attempts)
+        graph = build_graph(FakeTools(), DemoProvider(), max_attempts)
         return [
             name
             async for chunk in graph.astream(new_state("fix bug"), stream_mode="updates")
@@ -118,3 +149,48 @@ def test_repo_search_failure_is_recorded_not_fatal() -> None:
     final = _run(tools)
     assert final["inspected_files"] == []
     assert any("not_found" in risk for risk in final["risks"])
+
+
+def test_llm_analysis_drives_repo_search() -> None:
+    provider = FakeProvider(GOOD_JSON)
+    tools = FakeTools()
+    final = _run(tools, provider=provider)
+    assert final["analysis"] == "Fix the backoff in retry"
+    assert final["search_terms"] == ["backoff", "RetryPolicy"]
+    searched = [args["query"] for name, args in tools.calls if name == "search_repo"]
+    assert searched == ["backoff", "RetryPolicy"]
+
+
+def test_analysis_accepts_fenced_json_and_cleans_terms() -> None:
+    reply = '```json\n{"summary": "s", "search_terms": ["ok1", "", 5, "retry", "delay", "x"]}\n```'
+    final = _run(FakeTools(), provider=FakeProvider(reply))
+    assert final["search_terms"] == ["ok1", "retry", "delay"]
+
+
+def test_invalid_llm_output_falls_back_to_keywords_and_records_risk() -> None:
+    final = _run(FakeTools(), provider=FakeProvider("Look at the retry code."))
+    assert final["search_terms"] == ["retry", "delay"]
+    assert "not analysed by an LLM" in final["analysis"]
+    assert any("not valid JSON" in risk for risk in final["risks"])
+
+
+def test_provider_failure_is_recorded_not_fatal() -> None:
+    final = _run(FakeTools(), provider=FakeProvider(ProviderError("Could not reach Groq.")))
+    assert any("LLM analysis unavailable: Could not reach Groq." in r for r in final["risks"])
+    assert final["search_terms"] == ["retry", "delay"]
+    assert final["report"]
+
+
+def test_demo_provider_falls_back_without_a_risk() -> None:
+    final = _run(FakeTools())
+    assert final["search_terms"] == ["retry", "delay"]
+    assert final["risks"] == []
+
+
+def test_task_is_sent_only_as_user_message() -> None:
+    provider = FakeProvider(GOOD_JSON)
+    _run(FakeTools(), provider=provider, task="fix retry delay bug")
+    system, user = provider.seen[0]
+    assert system.role == "system" and "fix retry delay bug" not in system.content
+    assert user.role == "user" and user.content == "fix retry delay bug"
+    assert len(provider.seen) == 1
