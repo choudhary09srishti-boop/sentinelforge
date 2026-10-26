@@ -17,3 +17,5 @@ build/
 
 check_log.txt
 eval_log.txt
+
+context_dump.txt
