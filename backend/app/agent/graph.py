@@ -148,10 +148,24 @@ def _is_test_file(path: str) -> bool:
     )
 
 
+CODE_EXTENSIONS = (".py", ".js", ".ts", ".jsx", ".tsx")
+
+
 def _pick_target(files: list[str]) -> str | None:
-    if not files:
-        return None
-    return next((f for f in files if not _is_test_file(f)), files[0])
+    """Prefer source code over docs and tests.
+
+    Files are ranked by search hits, so a README that mentions a term
+    could otherwise outrank the code that implements it.
+    """
+    code = [f for f in files if f.lower().endswith(CODE_EXTENSIONS)]
+    for group in (
+        [f for f in code if not _is_test_file(f)],
+        [f for f in files if not _is_test_file(f)],
+        files,
+    ):
+        if group:
+            return group[0]
+    return None
 
 
 def _evidence_line(hit: dict[str, Any]) -> str:

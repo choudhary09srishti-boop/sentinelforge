@@ -358,3 +358,9 @@ def test_patch_prefers_non_test_files() -> None:
     _, tools, _ = _patch_run(files=("test_retry.py", "test_retry.py", "retry.py"))
     reads = [args for name, args in tools.calls if name == "read_repo_file"]
     assert reads == [{"path": "retry.py"}]
+
+
+def test_patch_prefers_code_over_docs_even_when_docs_rank_first() -> None:
+    _, tools, _ = _patch_run(files=("README.md", "calculator.py"))
+    reads = [args for name, args in tools.calls if name == "read_repo_file"]
+    assert reads == [{"path": "calculator.py"}]
