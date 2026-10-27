@@ -18,6 +18,7 @@ class AgentState(TypedDict):
     patch_content: str
     test_status: TestStatus
     test_output: str
+    feedback: str
     risks: list[str]
     attempts: int
     review_ok: bool
@@ -38,6 +39,7 @@ def new_state(task: str) -> AgentState:
         patch_content="",
         test_status="not_run",
         test_output="",
+        feedback="",
         risks=[],
         attempts=0,
         review_ok=False,

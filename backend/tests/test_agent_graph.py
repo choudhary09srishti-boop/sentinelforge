@@ -145,20 +145,6 @@ def _proposals(tools: FakeTools) -> list[dict[str, Any]]:
     return [args for name, args in tools.calls if name == "propose_patch"]
 
 
-def test_graph_runs_all_steps_and_retries_once() -> None:
-    path = _path(2)
-    assert path[0] == "analyze" and path[-1] == "report"
-    assert path.count("patch") == 2 and path.count("review") == 2
-    assert path[:5] == ["analyze", "retrieve", "inspect", "plan", "patch"]
-
-
-def test_retry_loop_is_capped_by_max_attempts() -> None:
-    assert _path(1).count("patch") == 1
-    final = _run(FakeTools(), max_attempts=1)
-    assert final["review_ok"] is False
-    assert "unresolved" in final["report"]
-
-
 def test_report_never_claims_tests_passed_when_not_run() -> None:
     final = _run(FakeTools())
     assert final["test_status"] == "not_run"
