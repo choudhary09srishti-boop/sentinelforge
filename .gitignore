@@ -21,3 +21,6 @@ eval_log.txt
 context_dump.txt
 
 lint_log.txt
+
+phase7*.zip
+context_dump*.txt
