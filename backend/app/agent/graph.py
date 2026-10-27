@@ -337,6 +337,7 @@ def make_patch(tools: ToolCaller, provider: LLMProvider) -> Any:
             "diff": "",
             "patch_path": "",
             "patch_id": "",
+            "base_sha256": "",
             "patch_content": "",
         }
 
@@ -386,6 +387,7 @@ def make_patch(tools: ToolCaller, provider: LLMProvider) -> Any:
             "diff": str(proposal.get("diff", "")),
             "patch_path": target,
             "patch_id": str(proposal.get("patch_id", "")),
+            "base_sha256": str(proposal.get("base_sha256", "")),
             "patch_content": new_content,
             "risks": risks,
         }

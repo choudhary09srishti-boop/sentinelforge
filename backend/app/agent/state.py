@@ -15,6 +15,7 @@ class AgentState(TypedDict):
     diff: str
     patch_path: str
     patch_id: str
+    base_sha256: str
     patch_content: str
     test_status: TestStatus
     test_output: str
@@ -36,6 +37,7 @@ def new_state(task: str) -> AgentState:
         diff="",
         patch_path="",
         patch_id="",
+        base_sha256="",
         patch_content="",
         test_status="not_run",
         test_output="",

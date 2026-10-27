@@ -20,6 +20,10 @@ STATUS_BY_CODE = {
     "unsupported_type": 415,
     "empty_document": 422,
     "parse_error": 422,
+    "conflict": 409,
+    "invalid_state": 409,
+    "rate_limited": 429,
+    "write_failed": 500,
     "embedding_unavailable": 503,
     "timeout": 504,
 }

@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     llm_provider: Literal["demo", "groq"] = "demo"
     groq_api_key: SecretStr = SecretStr("")
     groq_model: str = ""
+    run_timeout_seconds: float = Field(default=300.0, gt=0, le=1800)
+    max_active_runs: int = Field(default=3, ge=1, le=20)
+    sandbox_timeout_seconds: int = Field(default=60, ge=1, le=300)
 
     @model_validator(mode="after")
     def _reject_insecure_production(self) -> Self:
