@@ -1,10 +1,11 @@
-"""Agent graph. Everything up to patch does real work; execute and review are still stubs.
+"""Agent graph. Everything except review does real work.
 
-Nodes return only the state fields they change. Test results are never invented:
-until the sandbox exists, test_status stays "not_run". Retrieved text and repository files
-are data, never instructions: flagged chunks are excluded from the evidence, and text sent
-to the LLM is wrapped in <untrusted_data> tags. The patch node never writes anything; it
-only asks the read-only propose_patch tool for a diff that a human must approve.
+Nodes return only the state fields they change. Test results are never invented: they come
+from the sandbox, and without a sandbox or a patch test_status stays "not_run". Retrieved
+text and repository files are data, never instructions: flagged chunks are excluded from the
+evidence, and text sent to the LLM is wrapped in <untrusted_data> tags. The patch node never
+writes anything; it only asks the read-only propose_patch tool for a diff that a human must
+approve, and the execute node runs that patch only on a throwaway copy inside the sandbox.
 """
 
 import json
@@ -17,6 +18,7 @@ from langgraph.graph import END, START, StateGraph
 from app.agent.state import AgentState
 from app.mcp_client import McpToolError
 from app.providers.base import ChatMessage, LLMProvider, ProviderError
+from app.sandbox.runner import SandboxResult
 
 DEFAULT_MAX_ATTEMPTS = 2
 EVIDENCE_TOP_K = 5
@@ -27,6 +29,7 @@ MAX_PLAN_STEPS = 6
 PATCH_MAX_TOKENS = 4096
 MIN_LINES_FOR_RATIO_CHECK = 10
 MIN_LENGTH_RATIO = 0.5
+MAX_TEST_OUTPUT_CHARS = 4000
 
 DEFAULT_PLAN = (
     "Review the cited evidence and the inspected files.",
@@ -70,6 +73,14 @@ class ToolCaller(Protocol):
     """Anything that can call an MCP tool; McpGateway satisfies this."""
 
     async def call(self, tool: str, arguments: dict[str, Any] | None = None) -> dict[str, Any]: ...
+
+
+class SandboxPort(Protocol):
+    """Anything that can run the project's tests on a patched throwaway copy."""
+
+    async def run_tests(
+        self, patch_path: str | None = None, patch_content: str | None = None
+    ) -> SandboxResult: ...
 
 
 def _terms(task: str) -> list[str]:
@@ -331,11 +342,29 @@ def make_patch(tools: ToolCaller, provider: LLMProvider) -> Any:
     return patch
 
 
-async def execute(state: AgentState) -> dict[str, Any]:
-    return {
-        "test_status": "not_run",
-        "test_output": "Sandbox not available yet; nothing was executed.",
-    }
+def make_execute(sandbox: SandboxPort | None) -> Any:
+    async def execute(state: AgentState) -> dict[str, Any]:
+        if sandbox is None:
+            return {
+                "test_status": "not_run",
+                "test_output": "No sandbox is configured; nothing was executed.",
+            }
+        if not state["diff"]:
+            return {
+                "test_status": "not_run",
+                "test_output": "No patch was proposed, so there was nothing to test.",
+            }
+        result = await sandbox.run_tests(state["patch_path"], state["patch_content"])
+        risks = list(state["risks"])
+        if result.status not in ("passed", "failed"):
+            risks.append(f"Tests did not complete normally (status: {result.status}).")
+        return {
+            "test_status": result.status,
+            "test_output": result.output[:MAX_TEST_OUTPUT_CHARS],
+            "risks": risks,
+        }
+
+    return execute
 
 
 async def review(state: AgentState) -> dict[str, Any]:
@@ -351,17 +380,25 @@ async def report(state: AgentState) -> dict[str, Any]:
         )
     else:
         lines.append("No patch was proposed.")
-    if state["test_status"] == "not_run":
+    status = state["test_status"]
+    if status == "not_run":
         lines.append("Tests were not executed.")
+    elif status == "unavailable":
+        lines.append("Tests were not executed: no isolated sandbox is available.")
+    elif status in ("passed", "failed"):
+        lines.append(f"Tests {status} in the isolated sandbox.")
     else:
-        lines.append(f"Tests {state['test_status']}.")
+        lines.append(f"The test run did not complete normally (status: {status}).")
     if not state["review_ok"]:
         lines.append("Self-review did not pass; the proposal is unresolved.")
     return {"report": "\n".join(lines)}
 
 
 def build_graph(
-    tools: ToolCaller, provider: LLMProvider, max_attempts: int = DEFAULT_MAX_ATTEMPTS
+    tools: ToolCaller,
+    provider: LLMProvider,
+    max_attempts: int = DEFAULT_MAX_ATTEMPTS,
+    sandbox: SandboxPort | None = None,
 ) -> Any:
     def after_review(state: AgentState) -> str:
         if state["review_ok"] or state["attempts"] >= max_attempts:
@@ -374,7 +411,7 @@ def build_graph(
     graph.add_node("inspect", make_inspect(tools))
     graph.add_node("plan", make_plan(provider))
     graph.add_node("patch", make_patch(tools, provider))
-    graph.add_node("execute", execute)
+    graph.add_node("execute", make_execute(sandbox))
     graph.add_node("review", review)
     graph.add_node("report", report)
 

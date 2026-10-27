@@ -2,7 +2,7 @@
 
 from typing import Literal, TypedDict
 
-TestStatus = Literal["not_run", "passed", "failed"]
+TestStatus = Literal["not_run", "passed", "failed", "no_tests", "error", "timeout", "unavailable"]
 
 
 class AgentState(TypedDict):
