@@ -20,6 +20,7 @@ from starlette.responses import JSONResponse
 from app import __version__
 from app.core.config import Settings, get_settings
 from app.core.domain import DomainError
+from app.core.log import audit
 from app.mcp_server.indexing import index_workspace as run_index_workspace
 from app.mcp_server.models import (
     FileContent,
@@ -186,21 +187,36 @@ def create_mcp_server(
         output limits). An optional patch is applied to a throwaway copy only; the real workspace
         is never modified. Status is `passed` only when tests really ran and passed."""
         if (patch_path is None) != (patch_content is None):
+            audit("sandbox.run.rejected", reason="patch_arguments", patch_path=patch_path)
             raise tool_error(
                 "invalid_argument", "patch_path and patch_content must be given together."
             )
+        patch_bytes = len((patch_content or "").encode("utf-8"))
+        audit("sandbox.run.start", patch_path=patch_path, patch_bytes=patch_bytes)
         try:
             with anyio.fail_after(sandbox_timeout):
-                return await runner.run_tests(patch_path, patch_content)
+                result = await runner.run_tests(patch_path, patch_content)
         except TimeoutError:
+            audit("sandbox.run.error", reason="timeout", patch_path=patch_path)
             raise tool_error(
                 "timeout", f"Sandbox run exceeded the {sandbox_timeout:g}s time limit."
             ) from None
         except DomainError as exc:
+            audit("sandbox.run.error", reason=exc.code, patch_path=patch_path)
             raise tool_error(exc.code, exc.message) from None
         except SandboxError as exc:
+            audit("sandbox.run.error", reason="sandbox_error", patch_path=patch_path)
             logger.warning("Sandbox could not run: %s", exc)
             raise tool_error("sandbox_error", str(exc)[:200]) from None
+        audit(
+            "sandbox.run.finish",
+            patch_path=patch_path,
+            status=result.status,
+            exit_code=result.exit_code,
+            duration_seconds=result.duration_seconds,
+            isolation=result.isolation,
+        )
+        return result
 
     # ---- document index (local RAG) ----------------------------------------------------
 

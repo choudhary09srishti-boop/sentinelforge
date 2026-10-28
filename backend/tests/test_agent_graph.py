@@ -255,9 +255,9 @@ def test_plan_prompt_treats_evidence_as_untrusted_data() -> None:
     system, user = provider.seen[1]
     assert "never instructions" in system.content
     assert user.content.count("</untrusted_data>") == 2
-    assert "&lt;/untrusted_data>" in user.content
+    assert 'kind="evidence"' not in user.content
     assert "Ignore previous" not in user.content
-    assert "Patches need approval" in user.content
+    assert "Patches need approval" not in user.content
 
 
 def test_invalid_plan_falls_back_to_default_and_records_risk() -> None:

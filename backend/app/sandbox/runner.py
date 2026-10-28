@@ -32,6 +32,23 @@ ISOLATION = (
 MAX_COPY_FILES = 2000
 MAX_COPY_BYTES = 20 * 1024 * 1024
 MAX_PATCH_BYTES = 200_000
+ALLOWED_SUFFIXES = frozenset(
+    {
+        ".py",
+        ".pyi",
+        ".txt",
+        ".md",
+        ".json",
+        ".toml",
+        ".cfg",
+        ".ini",
+        ".yaml",
+        ".yml",
+        ".js",
+        ".ts",
+        ".example",
+    }
+)
 TIMEOUT_EXIT_CODES = frozenset({124, 137, 152})
 _PASSED = re.compile(r"\b\d+ passed\b")
 
@@ -92,7 +109,11 @@ def _copy_workspace(root: Path, dest: Path) -> None:
         base = Path(dirpath)
         for name in sorted(filenames):
             source = base / name
-            if source.is_symlink() or is_sensitive(name):
+            if (
+                source.is_symlink()
+                or is_sensitive(name)
+                or source.suffix.lower() not in ALLOWED_SUFFIXES
+            ):
                 continue
             files += 1
             total += source.stat().st_size
@@ -113,10 +134,13 @@ def _prepare_copy(
         raise SandboxError("The workspace is not available.")
     _copy_workspace(workspace.root, dest)
     if patch_path is not None and patch_content is not None:
+        resolved = workspace.resolve(patch_path)
+        if resolved.suffix.lower() not in ALLOWED_SUFFIXES:
+            raise SandboxError("That file type cannot be patched in the sandbox.")
         data = patch_content.encode("utf-8")
         if len(data) > MAX_PATCH_BYTES:
             raise SandboxError("The patch content is too large.")
-        target = dest / workspace.resolve(patch_path).relative_to(workspace.root)
+        target = dest / resolved.relative_to(workspace.root)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(data)
 

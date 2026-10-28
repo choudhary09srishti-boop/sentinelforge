@@ -109,12 +109,12 @@ def _path(max_attempts: int) -> list[str]:
 
 
 def test_failed_tests_trigger_one_more_attempt_through_the_whole_loop() -> None:
-    first = ["analyze", "retrieve", "inspect", "plan", "patch", "execute", "review"]
+    first = ["analyze", "plan", "retrieve", "inspect", "patch", "execute", "review"]
     assert _path(2) == [*first, "patch", "execute", "review", "report"]
 
 
 def test_retry_loop_is_capped_by_max_attempts() -> None:
-    first = ["analyze", "retrieve", "inspect", "plan", "patch", "execute", "review"]
+    first = ["analyze", "plan", "retrieve", "inspect", "patch", "execute", "review"]
     assert _path(1) == [*first, "report"]
 
 

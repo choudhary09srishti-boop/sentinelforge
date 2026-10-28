@@ -203,12 +203,13 @@ def _defang(text: str) -> str:
 
 
 def _plan_prompt(state: AgentState) -> str:
-    evidence = _defang("\n".join(state["evidence"]) or "(none)")
-    files = _defang("\n".join(state["inspected_files"]) or "(none)")
+    # Planning comes before retrieval, so it sees only the task and its analysis.
+    analysis = _defang(state["analysis"] or "(none)")
+    terms = _defang(", ".join(state["search_terms"]) or "(none)")
     return (
         f"Task: {state['task']}\n\n"
-        f'<untrusted_data kind="evidence">\n{evidence}\n</untrusted_data>\n\n'
-        f'<untrusted_data kind="files">\n{files}\n</untrusted_data>'
+        f'<untrusted_data kind="analysis">\n{analysis}\n</untrusted_data>\n\n'
+        f'<untrusted_data kind="search_terms">\n{terms}\n</untrusted_data>'
     )
 
 
@@ -494,10 +495,10 @@ def build_graph(
     graph.add_node("report", report)
 
     graph.add_edge(START, "analyze")
-    graph.add_edge("analyze", "retrieve")
+    graph.add_edge("analyze", "plan")
     graph.add_edge("retrieve", "inspect")
-    graph.add_edge("inspect", "plan")
-    graph.add_edge("plan", "patch")
+    graph.add_edge("inspect", "patch")
+    graph.add_edge("plan", "retrieve")
     graph.add_edge("patch", "execute")
     graph.add_edge("execute", "review")
     graph.add_conditional_edges("review", after_review, {"patch": "patch", "report": "report"})

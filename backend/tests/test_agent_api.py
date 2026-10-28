@@ -354,9 +354,7 @@ def test_too_many_active_runs_returns_429(
     assert response.json()["error"]["message"] == "Too many active runs. Try again shortly."
 
 
-def test_responses_never_contain_patch_internals(
-    agent_client: TestClient, api_key: str
-) -> None:
+def test_responses_never_contain_patch_internals(agent_client: TestClient, api_key: str) -> None:
     create = agent_client.post(RUNS, json={"task": TASK}, headers=_headers(api_key))
     run_id = create.json()["id"]
     detail = agent_client.get(f"{RUNS}/{run_id}", headers=_headers(api_key))

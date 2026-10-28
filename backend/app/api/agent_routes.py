@@ -122,9 +122,7 @@ async def create_run(
     settings: SettingsDep,
 ) -> RunSummary:
     if service.store.count_active() >= settings.max_active_runs:
-        raise HTTPException(
-            status_code=429, detail="Too many active runs. Try again shortly."
-        )
+        raise HTTPException(status_code=429, detail="Too many active runs. Try again shortly.")
     run_id = service.store.create_run(body.task)
     service.store.add_event(run_id, "info", "Run queued")
     record = _load(service, run_id)

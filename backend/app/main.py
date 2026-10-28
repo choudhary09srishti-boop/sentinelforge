@@ -15,6 +15,7 @@ from app.api.routes import health_router, v1_router
 from app.bootstrap import seed_workspace, start_bootstrap
 from app.core.config import Settings, get_settings
 from app.core.errors import register_error_handlers
+from app.core.log import configure_logging
 from app.core.rate_limit import RateLimitMiddleware, RateLimitSettings
 from app.core.request_id import add_request_id_middleware
 from app.mcp_client import McpGateway
@@ -35,6 +36,7 @@ def create_app(
     rate_limits: RateLimitSettings | None = None,
 ) -> FastAPI:
     settings = settings or get_settings()
+    configure_logging()
     rag = rag or RagService.from_settings(settings)
     app = FastAPI(
         title=settings.app_name,

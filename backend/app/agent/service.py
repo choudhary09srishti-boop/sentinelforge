@@ -22,6 +22,7 @@ from app.agent.mcp_sandbox import McpSandbox
 from app.agent.state import new_state
 from app.api.tool_call import STATUS_BY_CODE
 from app.core.config import Settings
+from app.core.log import audit
 from app.mcp_client import McpToolError
 from app.mcp_server.workspace import Workspace, WorkspaceError
 from app.providers.base import LLMProvider, ProviderError
@@ -205,6 +206,7 @@ class AgentService:
             if not self._store.transition(run_id, {APPROVABLE}, "applied", apply_json=apply_json):
                 raise HTTPException(status_code=409, detail=NOT_AWAITING)
             self._log(run_id, "info", f"Patch applied to {result.path}")
+            audit("patch.approved", run_id=run_id, path=result.path, new_sha256=result.new_sha256)
             stored = self._store.get_run(run_id)
             if stored is None:
                 raise HTTPException(status_code=404, detail=NOT_FOUND)
@@ -222,6 +224,7 @@ class AgentService:
             if not moved:
                 raise HTTPException(status_code=409, detail=NOT_AWAITING)
             self._log(run_id, "info", "Patch rejected by a human reviewer")
+            audit("patch.rejected", run_id=run_id)
             stored = self._store.get_run(run_id)
             if stored is None:
                 raise HTTPException(status_code=404, detail=NOT_FOUND)
