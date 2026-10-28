@@ -1,5 +1,10 @@
-﻿"""SentinelForge Streamlit prototype. Talks only to the HTTP API."""
+"""SentinelForge Streamlit UI. Talks only to the HTTP API.
 
+On a deployment set SF_API_URL and SF_API_KEY: the key then stays on the server and is never
+shown in the browser.
+"""
+
+import os
 import time
 
 import httpx
@@ -7,24 +12,29 @@ import streamlit as st
 
 st.set_page_config(page_title="SentinelForge", layout="wide")
 st.sidebar.title("SentinelForge")
-BASE = st.sidebar.text_input("API URL", "http://127.0.0.1:8000").rstrip("/")
-KEY = st.sidebar.text_input("API key", "change-me", type="password")
+
+ENV_URL = os.environ.get("SF_API_URL", "")
+ENV_KEY = os.environ.get("SF_API_KEY", "")
+BASE = (ENV_URL or st.sidebar.text_input("API URL", "http://127.0.0.1:8000")).rstrip("/")
+KEY = ENV_KEY or st.sidebar.text_input("API key", "change-me", type="password")
 
 
-def call(method: str, path: str, **kwargs):
+def call(method: str, path: str, quiet: bool = False, **kwargs):
     try:
         resp = httpx.request(
             method, BASE + path, headers={"X-API-Key": KEY}, timeout=130, **kwargs
         )
     except httpx.HTTPError:
-        st.error("Cannot reach the API. Is the backend running?")
+        if not quiet:
+            st.error("Cannot reach the API. Is the backend running?")
         return None
     if resp.status_code >= 400:
         try:
             msg = resp.json()["error"]["message"]
         except Exception:
             msg = resp.text[:200]
-        st.error(f"{resp.status_code}: {msg}")
+        if not quiet:
+            st.error(f"{resp.status_code}: {msg}")
         return None
     return resp.json()
 
@@ -40,9 +50,19 @@ def show_hits(hits: list) -> None:
             st.text(h["text"])
 
 
-tab_docs, tab_chat, tab_agent, tab_health = st.tabs(
-    ["Documents", "Chat", "Agent", "Health"]
-)
+health = call("GET", "/health", quiet=True)
+if health:
+    prov = health["provider"]
+    where = "External processing" if prov["external"] else "Local processing"
+    banner = f"**LLM mode: {prov['mode']}** | {where}\n\n{prov['data_notice']}"
+    (st.sidebar.warning if prov["external"] else st.sidebar.success)(banner)
+    if not prov["ready"]:
+        st.sidebar.error("The LLM provider is not fully configured.")
+    st.sidebar.caption("Embeddings and the document index always run locally.")
+else:
+    st.sidebar.error("Backend not reachable.")
+
+tab_docs, tab_chat, tab_agent, tab_health = st.tabs(["Documents", "Chat", "Agent", "Health"])
 
 with tab_docs:
     up = st.file_uploader("Upload a document")
@@ -92,10 +112,15 @@ with tab_chat:
 
 with tab_agent:
     task = st.text_area("Task for the coding agent", height=80)
-    if st.button("Start run", type="primary", disabled=len(task.strip()) < 5):
+    start_col, reset_col = st.columns([1, 1])
+    if start_col.button("Start run", type="primary", disabled=len(task.strip()) < 5):
         run = call("POST", "/api/v1/agent/runs", json={"task": task.strip()})
         if run:
             st.session_state["run_id"] = run["id"]
+    if reset_col.button("Reset demo workspace"):
+        reset = call("POST", "/api/v1/demo/reset")
+        if reset:
+            st.success(f"Restored {reset['files_restored']} sample files.")
     runs = call("GET", "/api/v1/agent/runs")
     runs_list = runs["runs"] if runs else []
     ids = [r["id"] for r in runs_list]
@@ -162,5 +187,5 @@ with tab_agent:
                     )
 
 with tab_health:
-    st.json(call("GET", "/health") or {})
+    st.json(health or {})
     st.json(call("GET", "/api/v1/config") or {})

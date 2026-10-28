@@ -8,9 +8,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from app import __version__
 from app.agent.service import AgentService, GraphRunner
 from app.api.agent_routes import router as agent_router
+from app.api.demo_routes import router as demo_router
 from app.api.rag_routes import router as rag_router
 from app.api.repo_routes import router as repo_router
 from app.api.routes import health_router, v1_router
+from app.bootstrap import seed_workspace, start_bootstrap
 from app.core.config import Settings, get_settings
 from app.core.errors import register_error_handlers
 from app.core.rate_limit import RateLimitMiddleware, RateLimitSettings
@@ -33,6 +35,7 @@ def create_app(
     rate_limits: RateLimitSettings | None = None,
 ) -> FastAPI:
     settings = settings or get_settings()
+    rag = rag or RagService.from_settings(settings)
     app = FastAPI(
         title=settings.app_name,
         version=__version__,
@@ -59,6 +62,7 @@ def create_app(
     app.include_router(v1_router)
     app.include_router(repo_router)
     app.include_router(rag_router)
+    app.include_router(demo_router)
     run_store = RunStore(Path(settings.data_dir) / "runs.sqlite3")
     # No lifespan: a run left queued or running by a dead process is failed here instead.
     run_store.recover_interrupted()
@@ -71,4 +75,7 @@ def create_app(
         graph_runner=graph_runner,
     )
     app.include_router(agent_router)
+    if settings.bootstrap_samples:
+        seed_workspace(settings)
+        start_bootstrap(settings, rag)
     return app

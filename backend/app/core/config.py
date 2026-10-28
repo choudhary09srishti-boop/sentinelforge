@@ -25,12 +25,18 @@ class Settings(BaseSettings):
     embedding_model: str = "BAAI/bge-small-en-v1.5"
     model_cache_dir: str = "./models"
     chunk_max_chars: int = Field(default=1000, ge=200, le=4000)
-    llm_provider: Literal["demo", "groq"] = "demo"
+    llm_provider: Literal["demo", "groq", "local"] = "demo"
     groq_api_key: SecretStr = SecretStr("")
     groq_model: str = ""
+    # Local inference through any OpenAI-compatible server (Ollama, llama.cpp server).
+    local_llm_url: str = "http://127.0.0.1:11434/v1"
+    local_llm_model: str = ""
     run_timeout_seconds: float = Field(default=300.0, gt=0, le=1800)
     max_active_runs: int = Field(default=3, ge=1, le=20)
     sandbox_timeout_seconds: int = Field(default=60, ge=1, le=300)
+    # Public demo: copy sample data into the workspace and index it on every start.
+    bootstrap_samples: bool = False
+    samples_dir: str = "./samples"
 
     @model_validator(mode="after")
     def _reject_insecure_production(self) -> Self:
