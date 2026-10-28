@@ -2,7 +2,8 @@
 
 Every run is persisted before it starts, so a restart leaves a readable record instead of a
 silently lost task. Only `approve` writes to the workspace, and only from the patch that was
-stored with the run: the request body can never supply file content.
+stored with the run: the request body can never supply file content. Test execution goes
+through the MCP `run_sandbox_tests` tool, like every other core agent operation.
 """
 
 import asyncio
@@ -17,6 +18,7 @@ from fastapi import HTTPException
 
 from app.agent.apply import apply_approved_patch
 from app.agent.graph import SandboxPort, ToolCaller, build_graph
+from app.agent.mcp_sandbox import McpSandbox
 from app.agent.state import new_state
 from app.api.tool_call import STATUS_BY_CODE
 from app.core.config import Settings
@@ -24,7 +26,6 @@ from app.mcp_client import McpToolError
 from app.mcp_server.workspace import Workspace, WorkspaceError
 from app.providers.base import LLMProvider, ProviderError
 from app.providers.factory import get_provider
-from app.sandbox.runner import SandboxRunner
 from app.storage.runs import RunRecord, RunStore
 
 logger = logging.getLogger("sentinelforge")
@@ -107,10 +108,7 @@ class AgentService:
         if self._graph_runner is not None:
             return await self._graph_runner(task, log)
         provider = self._provider or get_provider(self._settings)
-        sandbox: SandboxPort = self._sandbox or SandboxRunner(
-            Path(self._settings.workspace_root),
-            timeout_seconds=self._settings.sandbox_timeout_seconds,
-        )
+        sandbox: SandboxPort = self._sandbox or McpSandbox(self._gateway)
         graph = build_graph(self._gateway, provider, sandbox=sandbox)
         state: dict[str, Any] = dict(new_state(task))
         async for chunk in graph.astream(new_state(task), stream_mode="updates"):
